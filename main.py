@@ -2,8 +2,8 @@ import arcade, random, math, opensimplex
 
 # Constants
 
-SCREEN_WIDTH = 800
-SCREEN_HEIGHT = 600
+SCREEN_WIDTH = 1600
+SCREEN_HEIGHT = 1200
 
 BLOCKS_SIZE = (SCREEN_WIDTH//35,)*2
 
@@ -133,7 +133,7 @@ class GolfGame(arcade.Window):
         for hole in self.holes:
             if arcade.check_for_collision(self.ball, hole):
                 print("You win!")
-                arcade.close_window()
+                #arcade.close_window()
 
         self.ball.update()
 
