@@ -1,39 +1,147 @@
-from concurrent.futures import ThreadPoolExecutor
+import arcade, math
 
-import PIL, np
+# Angry bird game
 
-# Create Mandelbrot fractal
+# Constants
+SCREEN_WIDTH = 1600
+SCREEN_HEIGHT = 900
+GRAVITY = 1
 
-def mandelbrot(x, y, max_iters):
-    """Given the real and imaginary parts of a complex number,
-    determine if it is a candidate for membership in the Mandelbrot
-    set given a fixed number of iterations.
-    """
-    c = complex(x, y)
-    z = 0.0j
-    for i in range(max_iters):
-        z = z * z + c
-        if (z.real * z.real + z.imag * z.imag) >= 4:
-            return i
+# Constants used to scale our sprites from their original size
+CHARACTER_SCALING = 0.05
+TILE_SCALING = 0.5
+COIN_SCALING = 0.5
+SPRITE_PIXEL_SIZE = 128
 
-    return max_iters
+# Movement speed of birds, in pixels per frame
+BIRD_MOVEMENT_SPEED_X = 20
+BIRD_MOVEMENT_SPEED_Y = 35
 
-def create_fractal(min_x, max_x, min_y, max_y, image, iters, num_threads=1):
-    """Create a fractal image using the Mandelbrot algorithm."""
-    height = image.shape[0]
-    width = image.shape[1]
+# Classes
 
-    pixel_size_x = (max_x - min_x) / width
-    pixel_size_y = (max_y - min_y) / height
+def angle_to_xy(angle):
+    return math.cos(angle), math.sin(angle)
 
-    with ThreadPoolExecutor(max_workers=num_threads) as executor:
-        y_coords = np.linspace(min_y, max_y, height)
-        for x in range(width):
-            x_coord = min_x + x * pixel_size_x
-            executor.map(mandelbrot, [x_coord] * height, y_coords, [iters] * height, [image[:, x]] * height)
+class Bird(arcade.Sprite):
+    """ Bird Class """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.is_shooting = False
 
-if __name__ == '__main__':
-    image = np.zeros((1024, 1536), dtype=np.uint8)
-    create_fractal(-2.0, 1.0, -1.0, 1.0, image, 20, num_threads=4)
-    img = PIL.Image.fromarray(image)
-    img.show()
+    def update(self):
+        """ Move the bird """
+        if self.is_shooting:
+            self.change_y -= GRAVITY
+            self.center_x += self.change_x
+            self.center_y += self.change_y
+
+    def update_animation(self, delta_time: float = 1/60):
+        """ Manage the animation """
+        if self.is_shooting:
+            self.angle += -10
+
+    def shoot(self, angle, strenght):
+        """ Shoot the bird """
+        self.is_shooting = True
+        self.change_x = min(BIRD_MOVEMENT_SPEED_X * angle_to_xy(angle)[0] * (strenght / 200), 25)
+        self.change_y = min(BIRD_MOVEMENT_SPEED_Y * angle_to_xy(angle)[1] * (strenght / 200), 40)
+
+    def reset(self):
+        """ Reset the bird """
+        self.is_shooting = False
+        self.center_x = 100
+        self.center_y = 100
+        self.change_x = 0
+        self.change_y = 0
+        self.angle = 0
+
+
+class Brick(arcade.Sprite):
+    """ Brick Class """
+
+    def __init__(self, x, y, durability=1):
+        super().__init__("assets/wall.png", TILE_SCALING)
+        self.durability = durability
+        self.center_x = x
+        self.center_y = y
+
+    def update(self):
+        """ Update the brick """
+        pass
+
+    def hit(self):
+        """ Hit the brick """
+        self.durability -= 0.5
+        if self.durability <= 0:
+            self.kill()
+
+
+class Game(arcade.Window):
+    def __init__(self):
+        super().__init__(SCREEN_WIDTH, SCREEN_HEIGHT, "Angry Bird Game")
+        arcade.set_background_color(arcade.color.AMAZON)
+        self.bird = Bird("assets/bird.png", CHARACTER_SCALING)
+        self.bird.center_x = 100
+        self.bird.center_y = 100
+        self.brick_list = arcade.SpriteList()
+        self.shoot_angle = 0
+        self.shoot_strenght = 0
+        self.first_mouse_pos = 0, 0
+        self.shot_preview = arcade.SpriteList()
+        self.mouse_pressed = False
+        for i in range(100):
+            dot = arcade.Sprite("assets/hole.png", 0.01)
+            dot.center_x = -100
+            dot.center_y = -100
+            dot.alpha = 100
+            self.shot_preview.append(dot)
+
+    def on_draw(self):
+        arcade.start_render()
+        self.brick_list.draw()
+        self.shot_preview.draw()
+        self.bird.draw()
+
+    def on_key_press(self, key, modifiers):
+        if key == arcade.key.SPACE:
+            self.bird.shoot()
+            self.bird.change_y = BIRD_MOVEMENT_SPEED_Y
+        if key == arcade.key.R:
+            self.bird.reset()
+
+    def on_mouse_press(self, x: int, y: int, button: int, modifiers: int):
+        self.mouse_pressed = True
+        self.first_mouse_pos = x, y
+
+    def on_mouse_motion(self, x: int, y: int, dx: int, dy: int):
+        if self.mouse_pressed:
+            self.shoot_angle = math.atan2(y - self.first_mouse_pos[1], x - self.first_mouse_pos[0])
+            self.shoot_strenght = math.sqrt((y - self.first_mouse_pos[1]) ** 2 + (x - self.first_mouse_pos[0]) ** 2)
+            n = 0
+            for dot in self.shot_preview.sprite_list:
+                # The dots should make a curve
+                dot.center_x = self.bird.center_x + (self.shoot_strenght / 200) * BIRD_MOVEMENT_SPEED_X * angle_to_xy(self.shoot_angle)[0] * n
+                dot.center_y = self.bird.center_y + (self.shoot_strenght / 200) * BIRD_MOVEMENT_SPEED_Y * angle_to_xy(self.shoot_angle)[1] * n - 0.5 * GRAVITY * n ** 2
+                n += 1
+    def on_mouse_release(self, x: int, y: int, button: int, modifiers: int):
+        self.mouse_pressed = False
+        self.shoot_angle = math.atan2(y - self.first_mouse_pos[1], x - self.first_mouse_pos[0])
+        self.shoot_strenght = math.sqrt((y - self.first_mouse_pos[1]) ** 2 + (x - self.first_mouse_pos[0]) ** 2)
+        self.bird.shoot(self.shoot_angle, self.shoot_strenght)
+
+        for dot in self.shot_preview.sprite_list:
+            dot.center_x = -100
+            dot.center_y = -100
+
+    def on_update(self, delta_time):
+        self.bird.update()
+        self.brick_list.update()
+        self.bird.update_animation(delta_time)
+
+
+def main():
+    window = Game()
+    arcade.run()
+
+if __name__ == "__main__":
+    main()
