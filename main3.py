@@ -19,6 +19,9 @@ BIRD_MOVEMENT_SPEED_Y = 35
 
 # Classes
 
+def size_to_scale(sprite_size, target_size):
+    return target_size / sprite_size
+
 def angle_to_xy(angle):
     return math.cos(angle), math.sin(angle)
 
@@ -43,8 +46,8 @@ class Bird(arcade.Sprite):
     def shoot(self, angle, strenght):
         """ Shoot the bird """
         self.is_shooting = True
-        self.change_x = min(BIRD_MOVEMENT_SPEED_X * angle_to_xy(angle)[0] * (strenght / 200), 25)
-        self.change_y = min(BIRD_MOVEMENT_SPEED_Y * angle_to_xy(angle)[1] * (strenght / 200), 40)
+        self.change_x = BIRD_MOVEMENT_SPEED_X * angle_to_xy(angle)[0] * (strenght / 200)
+        self.change_y = BIRD_MOVEMENT_SPEED_Y * angle_to_xy(angle)[1] * (strenght / 200)
 
     def reset(self):
         """ Reset the bird """
@@ -60,7 +63,7 @@ class Brick(arcade.Sprite):
     """ Brick Class """
 
     def __init__(self, x, y, durability=1):
-        super().__init__("assets/wall.png", TILE_SCALING)
+        super().__init__("assets/brick.png", TILE_SCALING)
         self.durability = durability
         self.center_x = x
         self.center_y = y
@@ -69,11 +72,15 @@ class Brick(arcade.Sprite):
         """ Update the brick """
         pass
 
-    def hit(self):
+    def hit(self, strenght):
         """ Hit the brick """
-        self.durability -= 0.5
+        self.durability -= strenght
         if self.durability <= 0:
             self.kill()
+
+    def reset(self):
+        """ Reset the brick """
+        self.durability = 1
 
 
 class Game(arcade.Window):
@@ -89,12 +96,25 @@ class Game(arcade.Window):
         self.first_mouse_pos = 0, 0
         self.shot_preview = arcade.SpriteList()
         self.mouse_pressed = False
-        for i in range(100):
+        for i in range(200):
             dot = arcade.Sprite("assets/hole.png", 0.01)
             dot.center_x = -100
             dot.center_y = -100
             dot.alpha = 100
             self.shot_preview.append(dot)
+
+        # Add the bricks (reate a block of bricks)
+        brick_block_size = 15, 10
+        brick_block_position = 500, 50
+        x, y = brick_block_position
+        for i in range(brick_block_size[0]):
+            for j in range(brick_block_size[1]):
+                b = Brick(x, y)
+                b.scale = size_to_scale(b.texture.size[0], 50)
+                self.brick_list.append(b)
+                y += 50
+            x += 50
+            y = brick_block_position[1]
 
     def on_draw(self):
         arcade.start_render()
@@ -137,6 +157,13 @@ class Game(arcade.Window):
         self.bird.update()
         self.brick_list.update()
         self.bird.update_animation(delta_time)
+
+        # Deal bird collision with bricks (the bricks should be mouved)
+        for brick in self.brick_list:
+            if arcade.check_for_collision(self.bird, brick):
+                self.bird.change_y *= -1
+                brick.hit(1)
+
 
 
 def main():
