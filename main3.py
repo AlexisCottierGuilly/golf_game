@@ -1,4 +1,4 @@
-import arcade, math
+import arcade, math, opensimplex, random
 
 # Angry bird game
 
@@ -62,25 +62,38 @@ class Bird(arcade.Sprite):
 class Brick(arcade.Sprite):
     """ Brick Class """
 
-    def __init__(self, x, y, durability=1):
+    def __init__(self, x, y):
         super().__init__("assets/brick.png", TILE_SCALING)
-        self.durability = durability
         self.center_x = x
         self.center_y = y
+        self.change_x, self.change_y = 0, 0
+        self.initial_pos = [x, y]
 
     def update(self):
         """ Update the brick """
-        pass
+        self.center_x += self.change_x
+        self.center_y += self.change_y
+        self.angle += (self.change_x + self.change_y) / 30
 
-    def hit(self, strenght):
+        self.change_x *= 0.9
+        self.change_y *= 0.9
+
+    def hit(self, strenght, bird_position):
         """ Hit the brick """
-        self.durability -= strenght
-        if self.durability <= 0:
-            self.kill()
+        # Move the brick and deal rotations
+        position = [self.center_x, self.center_y]
+        # To calculate the angle, we have to compare the two positions
+        angle = math.atan2(bird_position[1] - position[1], bird_position[0] - position[0])
+        self.center_x += (position[0] + strenght * math.cos(angle)) / 10
+        self.center_y += (position[1] + strenght * math.sin(angle)) / 10
+        self.angle += strenght
 
     def reset(self):
         """ Reset the brick """
-        self.durability = 1
+        self.center_x = self.initial_pos[0]
+        self.center_y = self.initial_pos[1]
+        self.change_x, self.change_y = 0, 0
+        self.angle = 0
 
 
 class Game(arcade.Window):
@@ -104,14 +117,20 @@ class Game(arcade.Window):
             self.shot_preview.append(dot)
 
         # Add the bricks (reate a block of bricks)
-        brick_block_size = 15, 10
-        brick_block_position = 500, 50
+        brick_block_size = SCREEN_WIDTH // 50, SCREEN_HEIGHT // 50
+        brick_block_position = 0, 0
         x, y = brick_block_position
+        # Combine noises to create a complex structure genetation
+        noise = opensimplex.OpenSimplex(seed=random.randint(0, 100000000000))
+        noise2 = opensimplex.OpenSimplex(seed=random.randint(0, 100000000000))
+        noise3 = opensimplex.OpenSimplex(seed=random.randint(0, 100000000000))
         for i in range(brick_block_size[0]):
             for j in range(brick_block_size[1]):
-                b = Brick(x, y)
-                b.scale = size_to_scale(b.texture.size[0], 50)
-                self.brick_list.append(b)
+                value = noise.noise2(x=i / 10, y=j / 10) + noise2.noise2(x=i / 5, y=j / 5) + noise3.noise2(x=i / 2, y=j / 2)
+                if value > 0.5:
+                    b = Brick(x, y)
+                    b.scale = size_to_scale(b.texture.size[0], 50)
+                    self.brick_list.append(b)
                 y += 50
             x += 50
             y = brick_block_position[1]
@@ -128,6 +147,8 @@ class Game(arcade.Window):
             self.bird.change_y = BIRD_MOVEMENT_SPEED_Y
         if key == arcade.key.R:
             self.bird.reset()
+            for brick in self.brick_list:
+                brick.reset()
 
     def on_mouse_press(self, x: int, y: int, button: int, modifiers: int):
         self.mouse_pressed = True
@@ -158,11 +179,19 @@ class Game(arcade.Window):
         self.brick_list.update()
         self.bird.update_animation(delta_time)
 
-        # Deal bird collision with bricks (the bricks should be mouved)
-        for brick in self.brick_list:
-            if arcade.check_for_collision(self.bird, brick):
-                self.bird.change_y *= -1
-                brick.hit(1)
+        # Deal bird collision with bricks (the bricks should be moved)
+        if self.bird.is_shooting:
+            for brick in self.brick_list:
+                brick.update()
+                if arcade.check_for_collision(self.bird, brick):
+                    # Deal collisions with the arcade collision engine
+                    brick.collides_with_sprite(self.bird)
+                    self.bird.collides_with_sprite(brick)
+                    brick.change_x = self.bird.change_x
+                    brick.change_y = self.bird.change_y
+                    self.bird.change_y *= -1
+                    brick.change_y *= -1
+                    break
 
 
 
